@@ -1,6 +1,5 @@
 import { Component } from '@angular/core';
 import _map from 'lodash/map';
-import _filter from 'lodash/filter';
 
 @Component({
   selector: 'app-root',
@@ -12,6 +11,6 @@ import _filter from 'lodash/filter';
 })
 export class AppComponent {
   numbers = [1, 2, 3, 4, 5, 6];
-  evenNumbers = _filter(this.numbers, n => n % 2 === 0);
+  evenNumbers = this.numbers.filter(n => n % 2 === 0)
   squares = _map(this.numbers, n => n * n);
 }
