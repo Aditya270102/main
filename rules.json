@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "name": "Use Lodash",
+      "description": "Prefer Lodash methods over native loops or map/filter for consistency",
+      "pattern": "_map\\(|_filter\\("
+    },
+    {
+      "name": "Avoid any type",
+      "description": "Do not use TypeScript 'any' type",
+      "pattern": ": any"
+    }
+  ]
+}
