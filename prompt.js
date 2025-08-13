@@ -1,45 +1,42 @@
-// prompt.js
-const { exec } = require("child_process");
-const fs = require("fs");
+const { execSync } = require("child_process");
 
-const diff = fs.readFileSync("diff.txt", "utf-8");
-console.log('--- DIFF FILE CONTENTS ---');
-const prompt = `
-You are an expert Angular/TypeScript reviewer.
-Your job is to carefully analyze only the following git-style code diff.
+const MODEL = "gemma3:4b";
 
-Rules:
-1. Use lodash methods instead of native JS methods.
-2. Avoid using console.log in production.
-3. Use const over let when variables don't change.
+try {
+  // Get the diff of the latest commit
+  const diff = execSync(`git diff > diff.txt`, {
+    stdio: "inherit",
+    shell: "/bin/bash"
+  });
 
-Here is the diff to analyze:
+  // Construct the prompt
+  const prompt = `You are a senior software engineer conducting a code review. You must analyze the provided code changes and provide feedback based on the following specific rules. Focus ONLY on the changes shown in the diff.
+
+1. **Lodash Preference**: Lodash utility methods (e.g., _.map, _.filter) must be used instead of native JavaScript array methods.
+2. **Avoid \`any\`**: The \`any\` type in TypeScript or similar is not allowed. Use specific, well-defined types.
+
+Analyze the diff and provide a concise review. For each issue found, state the line number and the violation, then suggest the correct code. If no issues are found, simply say 'No issues found based on the provided rules.'
+
+Code diff to review:
+\`\`\`diff
 ${diff}
+\`\`\`
+  `;
 
-IMPORTANT:
-- Do NOT guess.
-- Only comment on changed lines.
-- Do not invent issues.
-- Your response must be based strictly on the diff above.
-- Format your reply in JSON like this:
+  // Run Ollama with the prompt piped to its stdin
+  console.log(`Running review with Ollama using model: ${MODEL}...`);
 
-[
-  {
-    "line": <line number>,
-    "issue": "<short issue name>",
-    "comment": "<detailed comment>"
+  const reviewResult = execSync(
+    `echo "${prompt}" | ollama run ${MODEL}`
+  ).toString();
+
+  // Output the result with a clear header
+  console.log("\n--- REVIEW RESULT ---\n");
+  console.log(reviewResult);
+  console.log("\n---------------------\n");
+} catch (error) {
+  console.error("An error occurred:", error.message);
+  if (error.stderr) {
+    console.error("Error details:", error.stderr.toString());
   }
-]
-`;
-
-console.log('--- END DIFF ---');
-const child = exec("ollama run gemma3:4b", (err, stdout, stderr) => {
-  if (err) {
-    console.error("Error running Ollama:", err.message);
-    return;
-  }
-  console.log(stdout);
-});
-
-child.stdin.write(prompt);
-child.stdin.end();
+}
