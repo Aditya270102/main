@@ -1,44 +1,70 @@
-const fs = require("fs");
-const { execSync } = require("child_process");
+// review.js
+import { GoogleGenAI } from "@google/genai";
+import { spawnSync } from "child_process";
+import dotenv from "dotenv";
+import fs from "fs";
 
-// Step 1: Read git diff from a file
-const diff = fs.readFileSync("diff.txt", "utf-8");
+dotenv.config();
 
-// Step 2: Create your full prompt
-const prompt = `
-You are an expert Angular/TypeScript reviewer.
+const DIFF_FILE = "diff.txt";
 
-Only review the changed lines of code below using these rules:
-1. Use lodash instead of native JS functions like map/filter.
-2. Avoid console.log in production code.
-3. Use 'const' when the variable does not change.
-4. Comment only on changed lines.
+// 1️⃣ Generate the git diff into diff.txt
+spawnSync("git", ["diff", "origin/main", "--", "*.component.ts"], {
+  shell: true,
+  stdio: ["ignore", fs.openSync(DIFF_FILE, "w"), "inherit"]
+});
 
-Changed Code:
-----------------------------
-${diff}
-----------------------------
+// 2️⃣ Read the diff
+const diffText = fs.readFileSync(DIFF_FILE, "utf8");
+if (!diffText.trim()) {
+  console.log("⚠️ No changes in *.component.ts files.");
+  process.exit(0);
+}
 
-Please respond in JSON format like:
-[
-  {
-    "line": 12,
-    "issue": "Use lodash",
-    "comment": "Use lodash.map instead of native map."
-  }
-]
+(async () => {
+  try {
+    // 3️⃣ Initialize GenAI client with your API key
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    const prompt = `Your task is to act as a code replacement bot. You must follow the instructions exactly and provide only the requested output.
+
+**Step 1: Identify all lines that start with a '+' in the provided code diff.**
+
+**Step 2: For each of these lines, check for the following patterns:**
+- **Pattern A:** The native JavaScript method \`.filter(\`
+- **Pattern B:** The native JavaScript method \`.map(\`
+- **Pattern C:** The use of the \`any\` type
+
+**Step 3: If you find a pattern, provide a specific, pre-defined suggestion:**
+- **If Pattern A is found, your ONLY suggestion is to replace it with the Lodash method \`_filter(\`.
+- **If Pattern B is found, your ONLY suggestion is to replace it with the Lodash method \`_map(\`.
+- **If Pattern C is found, your ONLY suggestion is to replace it with a specific type like \`number[]\` or \`Array<number>\`.
+
+**Step 4: Format your output for each identified issue.**
+The format must be a numbered list with the following structure:
+[Line Number]: The use of [pattern]. Instead, recommend [pre-defined suggestion].
+
+**Step 5: If no patterns are found on any of the '+' lines, output only "No issues found."**
+
+**Do not add any other commentary, and do not make up any issues that are not present in the provided diff. Be extremely literal and mechanical in your analysis.**
+
+Code diff to review:
+\`\`\`diff
+${diffText}
+\`\`\`
 `;
 
-// Step 3: Save the prompt to a temp file
-fs.writeFileSync("prompt.txt", prompt);
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: prompt,
+      config: {
+        thinkingConfig: { thinkingBudget: 0 }
+      }
+    });
 
-// Step 4: Run Ollama by redirecting the prompt as input
-try {
-  const result = execSync(`ollama run gemma3:4b < prompt.txt`, {
-    encoding: "utf-8"
-  });
-  console.log("\n--- AI Response ---\n");
-  console.log(result);
-} catch (error) {
-  console.error("\n❌ Error running Ollama:", error.message);
-}
+    console.log("\n💬 Gemini Review:\n");
+    console.log(response.text);
+  } catch (err) {
+    console.error("❌ Error reviewing code:", err);
+  }
+})();
